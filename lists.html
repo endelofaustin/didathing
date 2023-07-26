@@ -1,0 +1,20 @@
+<!-- templates/lists.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>All Lists</title>
+</head>
+<body>
+    <h1>All Lists</h1>
+    <ul>
+        {% for name, pylist in all_lists %}
+            <li><strong>{{ name }}</strong>: 
+            {% for item in pylist %}
+                {{ item }}{% if not loop.last %}, {% endif %}
+            {% endfor %}
+            </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
+

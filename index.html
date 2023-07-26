@@ -1,0 +1,31 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Basic Flask App</title>
+    <style>
+        /* Add custom CSS styles here */
+        h1 {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+    <h1>Let's create a list</h1>
+    
+    <form method="POST" action="/create_list">
+        <label for="list_name">Enter the list name:</label>
+        <input type="text" id="list_name" name="list_name">
+        <input type="submit" value="Create List">
+    </form>
+
+    <form method="POST" action="/add_item">
+        <label for="list_name_item">Enter the list name:</label>
+        <input type="text" id="list_name_item" name="list_name">
+        <label for="item_name">Add item to the list:</label>
+        <input type="text" id="item_name" name="item_name">
+        <input type="submit" value="Add Item">
+    </form>
+</body>
+</html>
+
