@@ -1,0 +1,62 @@
+name: Luther 1545 - Free Natural Voice and YouTube Video
+on:
+  push:
+    branches:
+      - luther-1545-free-voice-2026
+    paths:
+      - "luther-free-render/**"
+      - ".github/workflows/luther-1545-free.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install free local neural voice and FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng
+          python -m pip install --upgrade pip
+          python -m pip install kokoro-onnx soundfile numpy
+      - name: Download open Kokoro model and cover art
+        working-directory: luther-free-render
+        run: |
+          curl -fL --retry 4 --retry-delay 10 --connect-timeout 40 \
+            "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx" \
+            -o kokoro-v1.0.onnx
+          curl -fL --retry 4 --retry-delay 10 --connect-timeout 40 \
+            "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin" \
+            -o voices-v1.0.bin
+          curl -fL --retry 4 --retry-delay 10 --connect-timeout 40 \
+            "https://dynamic.heygen.ai/image/ee86e61e5f7e404da72811cd2b130f55/original.png" \
+            -o cover.png
+          test "$(stat -c %s kokoro-v1.0.onnx)" -gt 300000000
+          test "$(stat -c %s voices-v1.0.bin)" -gt 1000000
+          test "$(stat -c %s cover.png)" -gt 20000
+      - name: Narrate entire preface and render validated MP4
+        working-directory: luther-free-render
+        env:
+          LUTHER_VOICE: am_michael
+          LUTHER_SPEED: '0.94'
+        run: python -u render.py
+      - name: Upload completed audio, video and verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: Luther-1545-FREE-Natural-Voice-and-MP4
+          path: |
+            luther-free-render/output/*.mp3
+            luther-free-render/output/*.mp4
+            luther-free-render/output/validation.json
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
