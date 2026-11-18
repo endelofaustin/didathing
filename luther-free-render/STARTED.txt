@@ -1,0 +1,1 @@
+This isolated branch is generating a natural-voice, complete English reading of Martin Luther's 1545 preface using open-source Kokoro. No paid services. Do not merge this branch into main. Result is uploaded as a GitHub Actions artifact if successful.
