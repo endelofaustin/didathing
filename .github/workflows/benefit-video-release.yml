@@ -1,0 +1,99 @@
+name: Benefit of Christ's Death - Publishable Video Source
+on:
+  push:
+    branches:
+      - benefit-of-christs-death-kokoro-2026
+    paths:
+      - ".github/workflows/benefit-video-release.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out audiobook worktree
+        uses: actions/checkout@v4
+      - name: Install video tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          python -m pip install Pillow
+      - name: Download previously verified Kokoro audiobook
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/benefit-audio
+          gh run download 44326424622 -R endelofaustin/didathing -n Benefit-of-Christs-Death-Complete-Kokoro-Michael-Audiobook -D /tmp/benefit-audio
+          find /tmp/benefit-audio -type f -maxdepth 4 -printf '%p %s bytes\n'
+          test "$(stat -c %s /tmp/benefit-audio/The_Benefit_of_Christs_Death_COMPLETE_Kokoro_Michael.mp3)" -gt 90000000
+      - name: Generate respectful historic title card
+        run: |
+          cat > /tmp/cover.py <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          import math
+          W,H=1280,720
+          im=Image.new("RGB",(W,H)); pix=im.load()
+          for y in range(H):
+              for x in range(W):
+                  t=(x/W)*0.4+(y/H)*0.6
+                  g=max(0,1-math.hypot((x-960)/650,(y-380)/640))
+                  pix[x,y]=(int(13+12*t+24*g),int(25+7*t+12*g),int(37+4*t+5*g))
+          d=ImageDraw.Draw(im)
+          gold=(202,165,105); cream=(247,231,202); light=(185,205,204)
+          for inset,width in [(31,2),(41,1)]:
+              d.rectangle((inset,inset,W-inset,H-inset),outline=gold,width=width)
+          d.rectangle((966,179,1008,582),fill=(7,15,23),outline=gold,width=3)
+          d.rectangle((844,292,1133,340),fill=(7,15,23),outline=gold,width=3)
+          serif="/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+          sans="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+          small=ImageFont.truetype(sans,20)
+          small2=ImageFont.truetype(sans,21)
+          large=ImageFont.truetype(serif,65)
+          d.text((102,112),"A FORGOTTEN TREASURE OF THE ITALIAN REFORMATION",font=small,fill=gold)
+          d.line((102,157,684,157),fill=gold,width=2)
+          d.text((94,208),"THE BENEFIT",font=large,fill=cream)
+          d.text((94,302),"OF CHRIST'S",font=large,fill=cream)
+          d.text((94,400),"DEATH",font=large,fill=cream)
+          d.line((101,500,668,500),fill=gold,width=2)
+          d.text((101,532),"BENEDETTO DA MANTOVA  •  1543",font=small,fill=gold)
+          d.text((101,572),"Complete modern-English audiobook",font=small2,fill=light)
+          d.text((101,614),"Justification by faith in Jesus Christ",font=small2,fill=light)
+          im.save("/tmp/benefit_cover.png")
+          PY
+          python /tmp/cover.py
+      - name: Render complete YouTube MP4
+        run: |
+          ffmpeg -nostdin -y -hide_banner -loglevel error \
+            -loop 1 -framerate 6 -i /tmp/benefit_cover.png \
+            -i /tmp/benefit-audio/The_Benefit_of_Christs_Death_COMPLETE_Kokoro_Michael.mp3 \
+            -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -tune stillimage \
+            -crf 31 -r 6 -pix_fmt yuv420p -c:a aac -b:a 112k -ar 44100 -ac 1 \
+            -shortest -movflags +faststart \
+            The_Benefit_of_Christs_Death_Complete_Audiobook_YouTube.mp4
+          python - <<'PY'
+          import json,subprocess,os
+          def dur(path):
+              return float(json.loads(subprocess.check_output(["ffprobe","-v","error","-show_entries","format=duration","-of","json",path],text=True))["format"]["duration"])
+          a=dur("/tmp/benefit-audio/The_Benefit_of_Christs_Death_COMPLETE_Kokoro_Michael.mp3")
+          v=dur("The_Benefit_of_Christs_Death_Complete_Audiobook_YouTube.mp4")
+          print({"original_mp3_seconds":a,"completed_mp4_seconds":v,"bytes":os.stat("The_Benefit_of_Christs_Death_Complete_Audiobook_YouTube.mp4").st_size})
+          assert a>7500 and abs(a-v)<6, "Video is truncated"
+          subprocess.run(["ffmpeg","-v","error","-i","The_Benefit_of_Christs_Death_Complete_Audiobook_YouTube.mp4","-map","0:a:0","-f","null","-"],check=True)
+          PY
+      - name: Publish directly downloadable MP4 for transfer to YouTube
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="benefit-of-christ-death-audiobook-source-2026"
+          FILE="The_Benefit_of_Christs_Death_Complete_Audiobook_YouTube.mp4"
+          if gh release view "$TAG" -R endelofaustin/didathing >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber -R endelofaustin/didathing
+          else
+            gh release create "$TAG" "$FILE" -R endelofaustin/didathing --target benefit-of-christs-death-kokoro-2026 --title "Benefit of Christ's Death - complete audiobook MP4" --notes "Public source file for uploading the completed Kokoro audiobook video to YouTube."
+          fi
+          gh release view "$TAG" -R endelofaustin/didathing --json assets --jq '.assets[].url'
