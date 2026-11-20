@@ -1,0 +1,53 @@
+name: Robert Traill - Kokoro Full Audiobook Review
+on:
+  push:
+    branches:
+      - traill-justification-kokoro-2026
+    paths:
+      - "traill-kokoro/**"
+      - ".github/workflows/traill-kokoro.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout isolated narration branch
+        uses: actions/checkout@v4
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install speech software
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng
+          python -m pip install kokoro-onnx soundfile numpy beautifulsoup4
+      - name: Fetch free Kokoro model and Michael voice
+        working-directory: traill-kokoro
+        run: |
+          curl -fL --retry 4 --retry-delay 10 --connect-timeout 40 \
+            "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx" -o kokoro-v1.0.onnx
+          curl -fL --retry 4 --retry-delay 10 --connect-timeout 40 \
+            "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin" -o voices-v1.0.bin
+          test "$(stat -c %s kokoro-v1.0.onnx)" -gt 300000000
+          test "$(stat -c %s voices-v1.0.bin)" -gt 1000000
+      - name: Render full historical Traill text for review
+        working-directory: traill-kokoro
+        run: python -u render.py
+      - name: Upload audio, source and quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Robert-Traill-Justification-Kokoro-Review
+          path: |
+            traill-kokoro/output/*.mp3
+            traill-kokoro/output/*.json
+            traill-kokoro/output/historical_ocr_source.txt
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 30
