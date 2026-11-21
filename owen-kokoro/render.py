@@ -29,7 +29,7 @@ if not start or not end or end.start() < start.end():
     raise RuntimeError("Cannot prove complete-text boundaries: refusing partial audiobook")
 raw_book = raw[start.start():end.start()]
 for roman in ("I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII","XIII","XIV","XV","XVI","XVII","XVIII","XIX","XX"):
-    if not re.search(r"(?m)^\s*Chapter " + roman + r"\.\s", raw_book):
+    if not re.search(r"(?m)^\s*(?:Chapter\s+)?" + roman + r"\.\s", raw_book):
         raise RuntimeError("A chapter heading is absent: " + roman)
 # Reflow CCEL's hard-wrapped text. Remove typographical horizontal rules and isolated blank lines.
 lines = [line.strip() for line in raw_book.splitlines()
