@@ -1,0 +1,76 @@
+name: Endel archival register retrieval
+on:
+  push:
+    branches: [research/endel-archive-20261121]
+    paths: ['.github/workflows/endel-archive.yml']
+  workflow_dispatch:
+jobs:
+  retrieve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Probe original record and IIIF endpoints
+        shell: bash
+        run: |
+          mkdir -p archive-output
+          cat > /tmp/endel_probe.py <<'PY'
+          import urllib.request, urllib.error, json, re, os, traceback, html
+          BASE='https://archives67.alsace.eu/ark:/78665/1989472'
+          URLs=[
+            BASE,
+            BASE+'/manifest',
+            BASE+'/manifest.json',
+            BASE+'/iiif/manifest',
+            BASE+'/iiif/manifest.json',
+            BASE+'/dao/0/1',
+            BASE+'/canvas/0/75',
+            'https://archives.bas-rhin.fr/detail-document/ETAT-CIVIL-C585-P2-R162887',
+          ]
+          hdr={'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36',
+               'Accept':'text/html,application/json,image/*,*/*;q=0.9', 'Accept-Language':'fr-FR,fr;q=0.9,en-US;q=0.7'}
+          def fetch(u,tag):
+            try:
+              req=urllib.request.Request(u,headers=hdr)
+              try: res=urllib.request.urlopen(req,timeout=16)
+              except urllib.error.HTTPError as ex: res=ex
+              body=res.read(6000000)
+              ct=res.headers.get('Content-Type','')
+              final=res.geturl()
+              print('CHECK',tag,'HTTP',res.status,'BYTES',len(body),'TYPE',ct,'URL',final,flush=True)
+              ext='.json' if 'json' in ct else ('.jpg' if 'image/jpeg' in ct else ('.png' if 'image/png' in ct else '.html'))
+              if 'pdf' in ct:ext='.pdf'
+              with open('archive-output/'+tag+ext,'wb') as f:f.write(body)
+              if ('text' in ct or 'json' in ct or 'html' in ct):
+                s=body.decode('utf8','replace')
+                print('EXCERPT',tag,re.sub(r'\s+',' ',s[:550]),flush=True)
+                urls=re.findall(r'["\']([^"\']{8,350}(?:iiif|manifest|canvas|image|api)[^"\']{0,200})["\']',s,re.I)
+                print('DISCOVERED',tag,urls[:18],flush=True)
+                if 'json' in ct:
+                  try:
+                    o=json.loads(s)
+                    print('JSON_KEYS',tag, list(o)[:30] if isinstance(o,dict) else 'array',flush=True)
+                    canv=o.get('items',[]) if isinstance(o,dict) else []
+                    if not canv and isinstance(o,dict):canv=o.get('sequences',[{}])[0].get('canvases',[])
+                    if canv:
+                      print('CANVAS_COUNT',len(canv),flush=True)
+                      for idx in [72,73,74,75,76]:
+                        if idx>=len(canv):continue
+                        x=canv[idx]
+                        print('CANVAS',idx,json.dumps(x,ensure_ascii=False)[:650],flush=True)
+                        try:
+                          item=x.get('items',[{}])[0].get('items',[{}])[0]
+                          imageurl=item.get('body',{}).get('id')
+                          if imageurl and idx in (74,75):fetch(imageurl,'image-'+str(idx))
+                        except Exception as e:print('CANVAS_ERR',repr(e),flush=True)
+                  except Exception as e:print('JSON_ERR',repr(e),flush=True)
+              return
+            except Exception as e:print('ERROR',tag,str(e)[:500],flush=True)
+          for i,u in enumerate(URLs):fetch(u,'probe'+str(i))
+          PY
+          python /tmp/endel_probe.py 2>&1 | tee archive-output/runner-log.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: endel-la-petite-pierre-archive-probe
+          path: archive-output/
+          retention-days: 7
