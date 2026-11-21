@@ -1,0 +1,90 @@
+name: YouTube Channel Manager (no vidIQ)
+
+on:
+  pull_request:
+    paths:
+      - 'youtube_upload/**'
+      - '.github/workflows/youtube-channel-manager.yml'
+  workflow_dispatch:
+    inputs:
+      plan_file:
+        description: 'Reviewed JSON plan under youtube_upload/manifests/'
+        type: string
+        required: true
+        default: youtube_upload/manifests/example_refresh.json
+      apply_changes:
+        description: 'Explicitly write the plan to YouTube? Unchecked means preview ONLY.'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: youtube-channel-manager-${{ github.ref }} 
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install API dependencies
+        run: python -m pip install -r youtube_upload/requirements.txt
+      - name: Run offline unit tests
+        run: python -m unittest discover -s youtube_upload -p 'test_*.py' -v
+      - name: Check the example plan without Google credentials
+        run: python youtube_upload/manage.py --plan youtube_upload/manifests/example_refresh.json --check-plan
+
+  manage:
+    needs: test
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PLAN_FILE: ${{ inputs.plan_file }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install API dependencies
+        run: python -m pip install -r youtube_upload/requirements.txt
+      - name: Validate selected plan
+        run: |
+          set -euo pipefail
+          case "$PLAN_FILE" in
+            youtube_upload/manifests/*.json) ;;
+            *) echo "::error::Plan must be inside youtube_upload/manifests/"; exit 1 ;;
+          esac
+          python youtube_upload/manage.py --plan "$PLAN_FILE" --check-plan
+      - name: Preview or apply expressly approved changes
+        env:
+          APPLY_CHANGES: ${{ inputs.apply_changes }}
+        run: |
+          set -euo pipefail
+          cmd=(python youtube_upload/manage.py --plan "$PLAN_FILE"
+            --result-file channel-manager-result.json)
+          if [ "$APPLY_CHANGES" = "true" ]; then
+            cmd+=(--apply)
+          fi
+          "${cmd[@]}"
+      - name: Upload non-sensitive receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: channel-manager-receipt-${{ github.run_id }}
+          path: channel-manager-result.json
+          if-no-files-found: warn
+          retention-days: 30
