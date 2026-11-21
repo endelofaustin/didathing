@@ -1,0 +1,31 @@
+name: Melanchthon 1552 public full-view page verification
+on:
+  push:
+    branches:
+      - melanchthon-1552-osiander-source-recovery-2026
+    paths:
+      - 'melanchthon-page-check/**'
+      - '.github/workflows/melanchthon-page-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check-pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check signed public page images from full-view edition
+        working-directory: melanchthon-page-check
+        run: python -u verify_pages.py
+      - name: Upload sample images and audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Melanchthon-1552-Page-Image-Verification
+          path: melanchthon-page-check/scans/
+          if-no-files-found: warn
+          retention-days: 10
