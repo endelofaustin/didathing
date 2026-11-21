@@ -84,8 +84,8 @@ jobs:
           FILES=(review/*.mp4 review/John_Owen_Justification_HISTORICAL_PUBLIC_DOMAIN_SCAN.pdf)
           test "$(find review -maxdepth 1 -name '*.mp4' | wc -l)" -eq 8
           if gh release view "$TAG" -R endelofaustin/didathing >/dev/null 2>&1; then
-            gh release upload "$TAG" "\${FILES[@]}" --clobber -R endelofaustin/didathing
+            gh release upload "$TAG" "${FILES[@]}" --clobber -R endelofaustin/didathing
           else
-            gh release create "$TAG" "\${FILES[@]}" -R endelofaustin/didathing --target john-owen-justification-kokoro-2026 --title 'John Owen - Doctrine of Justification by Faith: Eight-Part Audiobook Review' --notes 'All eight complete public-domain John Owen Kokoro Michael audiobook videos and 460-page historical scan. Verified draft assets for YouTube preparation, NOT yet published on YouTube.'
+            gh release create "$TAG" "${FILES[@]}" -R endelofaustin/didathing --target john-owen-justification-kokoro-2026 --title 'John Owen - Doctrine of Justification by Faith: Eight-Part Audiobook Review' --notes 'All eight complete public-domain John Owen Kokoro Michael audiobook videos and 460-page historical scan. Verified draft assets for YouTube preparation, NOT yet published on YouTube.'
           fi
           gh release view "$TAG" -R endelofaustin/didathing --json url,assets --jq '{url,assets:[.assets[]|{name:.name,size:.size,url:.url}]}'
