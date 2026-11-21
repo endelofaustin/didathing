@@ -1,0 +1,36 @@
+{
+  "expectedChannelId": "UC_MLwosrdFohed-oRiohxLw",
+  "videos": [
+    {
+      "videoId": "cramQUE0Fo8",
+      "title": "Justification by Faith Alone — Philipp Melanchthon (1552) | Full Audiobook",
+      "appendFile": "youtube_upload/addenda/append_cramQUE0Fo8.txt"
+    },
+    {
+      "videoId": "tBYTFgZirDc",
+      "title": "Grace Through Christ — Huldrych Zwingli (1524) | Christian Audiobook",
+      "appendFile": "youtube_upload/addenda/append_tBYTFgZirDc.txt"
+    },
+    {
+      "videoId": "mE5MIxngiJw",
+      "title": "Justification Vindicated — Robert Traill | Full Christian Audiobook",
+      "appendFile": "youtube_upload/addenda/append_mE5MIxngiJw.txt"
+    },
+    {
+      "videoId": "0OmCU82LjcU",
+      "title": "The Benefit of Christ’s Death (1543) | Complete Christian Audiobook",
+      "appendFile": "youtube_upload/addenda/append_0OmCU82LjcU.txt"
+    },
+    {
+      "videoId": "iyHn-KBT_NQ",
+      "title": "How Luther Came to Understand Romans 1:17 | 1545 Preface Audiobook",
+      "appendFile": "youtube_upload/addenda/append_iyHn-KBT_NQ.txt"
+    },
+    {
+      "videoId": "hrTiAYYibaU",
+      "title": "Martin Luther on Faith in Christ | Preface to Galatians (1535) — Audiobook",
+      "appendFile": "youtube_upload/addenda/append_hrTiAYYibaU.txt"
+    }
+  ],
+  "playlists": []
+}
