@@ -1,0 +1,95 @@
+name: John Owen - Full Justification by Faith Kokoro (8-Part Review)
+on:
+  push:
+    branches:
+      - john-owen-justification-kokoro-2026
+    paths:
+      - 'owen-kokoro/**'
+      - '.github/workflows/owen-kokoro.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  render:
+    name: Narrate and validate Part ${{ matrix.part }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        part: [1,2,3,4,5,6,7,8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install free text-to-speech and video tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng fonts-dejavu-core
+          python -m pip install --disable-pip-version-check kokoro-onnx soundfile numpy pillow
+      - name: Download original Kokoro model and voice bundle
+        working-directory: owen-kokoro
+        run: |
+          curl -fL --retry 5 --retry-delay 10 --connect-timeout 40 'https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx' -o kokoro-v1.0.onnx
+          curl -fL --retry 5 --retry-delay 10 --connect-timeout 40 'https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin' -o voices-v1.0.bin
+          test "$(stat -c %s kokoro-v1.0.onnx)" -gt 300000000
+          test "$(stat -c %s voices-v1.0.bin)" -gt 1000000
+      - name: Narrate complete John Owen text in eight nonoverlapping parts
+        working-directory: owen-kokoro
+        env:
+          OWEN_PART: ${{ matrix.part }}
+        run: python -u render.py
+      - name: Upload all review media and quality reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: owen-justification-part-${{ matrix.part }}
+          path: |
+            owen-kokoro/output/*.mp3
+            owen-kokoro/output/*.mp4
+            owen-kokoro/output/*_validation.json
+            owen-kokoro/output/*_source.txt
+            owen-kokoro/output/*.png
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+  package:
+    name: Release all eight review videos and historical PDF
+    needs: [render]
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Collect eight independently validated outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: owen-justification-part-*
+          path: review
+          merge-multiple: true
+      - name: Verify all parts exist
+        run: |
+          test "$(find review -maxdepth 1 -name '*.mp4' | wc -l)" -eq 8
+          test "$(find review -maxdepth 1 -name '*.mp3' | wc -l)" -eq 8
+          test "$(find review -maxdepth 1 -name '*_validation.json' | wc -l)" -eq 8
+          ls -lh review/*.mp4
+      - name: Download historical 460-page public domain PDF
+        run: |
+          set -e
+          P='review/John_Owen_Justification_HISTORICAL_PUBLIC_DOMAIN_SCAN.pdf'
+          curl -fL --retry 3 --retry-delay 10 --connect-timeout 30 'https://archive.org/download/doctrineofjustif00owenuoft/doctrineofjustif00owenuoft.pdf' -o "$P" ||
+          curl -fL --retry 3 --retry-delay 10 --connect-timeout 30 'https://upload.wikimedia.org/wikipedia/commons/a/a9/The_doctrine_of_justification_by_faith%2C_through_the_imputation_of_the_righteousness_of_Christ_%28IA_doctrineofjustif00owenuoft%29.pdf' -o "$P"
+          test "$(stat -c %s "$P")" -gt 20000000
+          head -c 4 "$P" | grep -q '%PDF'
+      - name: Release downloadable review source videos (not a YouTube publication)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG='john-owen-justification-kokoro-review-2026'
+          FILES=(review/*.mp4 review/John_Owen_Justification_HISTORICAL_PUBLIC_DOMAIN_SCAN.pdf)
+          if gh release view "$TAG" -R endelofaustin/didathing >/dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --clobber -R endelofaustin/didathing
+          else
+            gh release create "$TAG" "${FILES[@]}" -R endelofaustin/didathing --target john-owen-justification-kokoro-2026 --title 'John Owen - Justification by Faith (Eight-Part Kokoro Review)' --notes 'Eight continuous Kokoro Michael-voice source videos and historical public-domain PDF scan. Automated draft for verification, not yet published to YouTube.'
+          fi
+          gh release view "$TAG" -R endelofaustin/didathing --json url,assets --jq '{url,assets:[.assets[].url]}'
