@@ -1,0 +1,139 @@
+name: YouTube API Uploader (no vidIQ)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'youtube_upload/**'
+      - '.github/workflows/youtube-api-uploader.yml'
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: 'GitHub Actions run ID with a completed MP4/MOV artifact; blank = tests only'
+        type: string
+        required: false
+        default: ''
+      artifact_name:
+        description: 'Artifact containing one MP4/MOV and optional JPG/PNG'
+        type: string
+        required: true
+        default: youtube-ready-video
+      metadata_file:
+        description: 'Approved JSON metadata file in repo'
+        type: string
+        required: true
+        default: youtube_upload/metadata/luther_1522.json
+      visibility:
+        description: 'Explicit YouTube visibility'
+        type: choice
+        options: [private, unlisted, public]
+        required: true
+        default: private
+      publish:
+        description: 'Upload to YouTube now? Leave unchecked for validation only.'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: youtube-uploader-${ github.event_name }}-${ inputs.artifact_run_id || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: python -m pip install -r youtube_upload/requirements.txt
+      - name: Offline tests
+        run: python -m unittest discover -s youtube_upload -p 'test_*.py' -v
+      - name: Validate approved description
+        env:
+          META_FILE: ${ github.event_name == 'workflow_dispatch' && inputs.metadata_file || 'youtube_upload/metadata/luther_1522.json' }}
+        run: |
+          case "$META_FILE" in
+            youtube_upload/metadata/*.json) ;;
+            *) echo "::error::Metadata path must be in youtube_upload/metadata/"; exit 1 ;;
+          esac
+          test -f "$META_FILE"
+          python youtube_upload/uploader.py --metadata "$META_FILE" --validate-only
+
+  upload:
+    needs: test
+    if: github.event_name == 'workflow_dispatch' && inputs.artifact_run_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SOURCE_RUN: ${ inputs.artifact_run_id }}
+      SOURCE_ARTIFACT: ${ inputs.artifact_name }}
+      META_FILE: ${ inputs.metadata_file }}
+      VISIBILITY: ${ inputs.visibility }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: python -m pip install -r youtube_upload/requirements.txt
+      - name: Download MP4 from a completed GitHub run
+        env:
+          GH_TOKEN: ${ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]] || { echo "::error::Run ID must be a number"; exit 1; }
+          mkdir -p stage
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name "$SOURCE_ARTIFACT" --dir stage
+          mapfile -d '' movies < <(find stage -type f \( -iname '*.mp4' -o -iname '*.mov' \) -print0)
+          if [ "${#movies[@]}" -ne 1 ]; then
+            echo "::error::Exactly one MP4/MOV required. MP3-only artifacts must first be assembled."
+            exit 1
+          fi
+          echo "VIDEO_PATH=${movies[0]}" >> "$GITHUB_ENV"
+          mapfile -d '' images < <(find stage -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) -print0)
+          if [ "${#images[@]}" -eq 1 ]; then
+            echo "THUMBNAIL_PATH=${images[0]}" >> "$GITHUB_ENV"
+          fi
+      - name: Dry-run validation
+        run: |
+          set -euo pipefail
+          case "$META_FILE" in youtube_upload/metadata/*.json) ;; *) exit 1 ;; esac
+          python youtube_upload/uploader.py --metadata "$META_FILE" \
+            --video "$VIDEO_PATH" --visibility "$VISIBILITY" \
+            --expected-channel-id "UC_MLwosrdFohed-oRiohxLw"
+      - name: Explicitly approved publish
+        if: inputs.publish == true
+        env:
+          YOUTUBE_CLIENT_ID: ${ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: |
+          set -euo pipefail
+          args=(--metadata "$META_FILE" --video "$VIDEO_PATH"
+            --visibility "$VISIBILITY" --expected-channel-id "UC_MLwosrdFohed-oRiohxLw"
+            --result-file upload-result.json --publish)
+          if [ -n "${THUMBNAIL_PATH:-}" ]; then
+            args+=(--thumbnail "$THUMBNAIL_PATH")
+          fi
+          python youtube_upload/uploader.py "${args[@]}"
+      - name: Save non-sensitive upload receipt
+        if: always() && inputs.publish == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-upload-receipt-${ github.run_id }}
+          path: upload-result.json
+          if-no-files-found: warn
+          retention-days: 90
