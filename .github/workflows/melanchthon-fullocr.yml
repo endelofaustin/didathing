@@ -1,0 +1,44 @@
+name: Melanchthon 1552 complete historical OCR manuscript
+on:
+  push:
+    branches:
+      - melanchthon-1552-osiander-source-recovery-2026
+    paths:
+      - 'melanchthon-fullocr/**'
+      - '.github/workflows/melanchthon-fullocr.yml'
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  transcribe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install historical print OCR
+        run: python -m pip install --quiet kraken
+      - name: Download complete original page-image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Melanchthon-1552-Page-Image-Verification
+          run-id: 44846498873
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: melanchthon-fullocr/images
+      - name: Fetch German historical print model
+        run: |
+          curl -fL --retry 4 'https://zenodo.org/records/10519596/files/german_print.mlmodel?download=1' -o melanchthon-fullocr/german_print.mlmodel
+          test "$(stat -c %s melanchthon-fullocr/german_print.mlmodel)" -gt 10000000
+      - name: OCR all German and Latin text pages with source markers
+        run: python -u melanchthon-fullocr/ocr_all.py
+      - name: Upload original-language OCR for proofreading
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Melanchthon-1552-Complete-OCR-For-Proofreading
+          path: melanchthon-fullocr/transcriptions/
+          if-no-files-found: warn
+          retention-days: 30
