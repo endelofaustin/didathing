@@ -1,0 +1,91 @@
+name: John Owen - Package Previously Rendered Complete Eight-Part Audiobook
+on:
+  push:
+    branches: [john-owen-justification-kokoro-2026]
+    paths: ['.github/workflows/owen-package-only.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Install FFprobe and PDF validation tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg poppler-utils
+          command -v ffprobe
+          command -v pdfinfo
+      - name: Recover seven original successful parts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 44845145371
+          repository: endelofaustin/didathing
+          github-token: ${{ github.token }}
+          pattern: owen-justification-part-*
+          merge-multiple: true
+          path: review
+      - name: Recover repaired Part 1
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 44924679377
+          repository: endelofaustin/didathing
+          github-token: ${{ github.token }}
+          name: owen-justification-part-1-repaired
+          path: review
+      - name: Verify complete source and eight nontruncated MP4 videos
+        run: |
+          python - <<'PY'
+          import json,subprocess
+          from pathlib import Path
+          p=Path("review")
+          reports=[json.loads(x.read_text()) for x in p.glob("*_validation.json")]
+          reports.sort(key=lambda x:x['part'])
+          assert len(reports)==8 and [x['part'] for x in reports]==list(range(1,9)),str([x['part'] for x in reports])
+          assert len({x['source_word_count'] for x in reports})==1
+          assert len({x['source_chunk_total'] for x in reports})==1
+          assert reports[0]['part_chunk_start']==0
+          assert reports[-1]['part_chunk_end']==reports[0]['source_chunk_total']
+          assert all(x['part_chunk_end']==z['part_chunk_start'] for x,z in zip(reports,reports[1:]))
+          assert sum(x['part_words'] for x in reports)==reports[0]['source_word_count']
+          assert len(list(p.glob('*.mp4')))==len(list(p.glob('*.mp3')))==8
+          for x in reports:
+              n=x['part']
+              base=f"John_Owen_Justification_Part_{n:02d}_of_08"
+              mp4,mp3=p/(base+".mp4"),p/(base+".mp3")
+              assert mp4.stat().st_size>5000000 and mp3.stat().st_size>5000000
+              f=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_entries','format=duration','-of','json',str(mp4)],text=True))
+              codecs={s['codec_type']:s['codec_name'] for s in f['streams']}
+              assert codecs.get('video')=='h264' and codecs.get('audio')=='aac', (n,codecs)
+              seconds=float(f['format']['duration'])
+              delta=seconds-x['mp3_seconds']
+              assert -2<=delta<=(2 if n==1 else 8),(n,delta)
+              assert 1800<seconds<43000
+              print(f"OK Part {n}/8: {x['part_words']} words, {seconds:.2f}s, delta {delta:.2f}s",flush=True)
+          print("All eight source parts verified with no word omissions or overlap. Total words:",reports[0]['source_word_count'])
+          PY
+      - name: Obtain historic 460-page public-domain scanned PDF
+        run: |
+          set -e
+          P='review/John_Owen_Justification_HISTORICAL_PUBLIC_DOMAIN_SCAN.pdf'
+          curl -fL --retry 4 --retry-delay 10 --connect-timeout 30 'https://archive.org/download/doctrineofjustif00owenuoft/doctrineofjustif00owenuoft.pdf' -o "$P" ||
+          curl -fL --retry 4 --retry-delay 10 --connect-timeout 30 'https://commons.wikimedia.org/wiki/Special:Redirect/file/The_doctrine_of_justification_by_faith%2C_through_the_imputation_of_the_righteousness_of_Christ_%28IA_doctrineofjustif00owenuoft%29.pdf' -o "$P"
+          test "$(stat -c %s "$P")" -gt 20000000
+          test "$(head -c 4 "$P")" = '%PDF'
+          pdfinfo "$P" | grep -E '^Pages:[[:space:]]+460$'
+      - name: Create review release with all eight source videos and historic PDF
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG='john-owen-justification-kokoro-review-2026'
+          FILES=(review/*.mp4 review/John_Owen_Justification_HISTORICAL_PUBLIC_DOMAIN_SCAN.pdf)
+          test "$(find review -maxdepth 1 -name '*.mp4' | wc -l)" -eq 8
+          if gh release view "$TAG" -R endelofaustin/didathing >/dev/null 2>&1; then
+            gh release upload "$TAG" "\${FILES[@]}" --clobber -R endelofaustin/didathing
+          else
+            gh release create "$TAG" "\${FILES[@]}" -R endelofaustin/didathing --target john-owen-justification-kokoro-2026 --title 'John Owen - Doctrine of Justification by Faith: Eight-Part Audiobook Review' --notes 'All eight complete public-domain John Owen Kokoro Michael audiobook videos and 460-page historical scan. Verified draft assets for YouTube preparation, NOT yet published on YouTube.'
+          fi
+          gh release view "$TAG" -R endelofaustin/didathing --json url,assets --jq '{url,assets:[.assets[]|{name:.name,size:.size,url:.url}]}'
