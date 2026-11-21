@@ -5,7 +5,7 @@ bid="EWA8AAAAcAAJ"
 opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 headers={"User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"}
 audit=[]
-for p in [1,5,11,20,30,40,50,60,74]:
+for p in range(1,75):
     url=f"https://books.google.com/books?id={bid}&pg=PP{p}&jscmd=SearchWithinVolume2&q=Osiandri"
     row={"page":p}
     try:
@@ -28,3 +28,6 @@ for p in [1,5,11,20,30,40,50,60,74]:
     except Exception as e:row["result"]="error";row["error"]=str(e)[:300]
     print(row,flush=True);audit.append(row);time.sleep(.4)
 (out/"image_probe_report.json").write_text(json.dumps(audit,indent=2))
+
+valid=sum(r['result']=='VALID_IMAGE' for r in audit)
+print(f'COMPLETE PAGE RETRIEVAL: {valid}/{len(audit)} images; inspect all missing before translation',flush=True)
