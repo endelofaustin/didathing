@@ -1,0 +1,43 @@
+name: Luther Gospel 1522 - Independent Translation - Kokoro Michael
+on:
+  push:
+    branches:
+      - luther-gospel-kokoro-1522-2026
+    paths:
+      - .github/workflows/luther-gospel-kokoro.yml
+      - audiobooks/luther-gospel-1522/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  produce-audiobook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout independent narration and code
+        uses: actions/checkout@v4
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install open-source text to speech dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg espeak-ng
+          python -m pip install --upgrade pip
+          python -m pip install 'kokoro==0.9.4' numpy soundfile
+      - name: Narrate complete Luther translation (am_michael)
+        run: python audiobooks/luther-gospel-1522/build.py
+      - name: Upload completed review MP3, transcript, and manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: luther-gospel-1522-kokoro-michael-review
+          path: |
+            audiobooks/luther-gospel-1522/output/*.mp3
+            audiobooks/luther-gospel-1522/output/manifest.json
+            audiobooks/luther-gospel-1522/output/narration.txt
+          retention-days: 30
+          if-no-files-found: warn
