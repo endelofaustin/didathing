@@ -1,0 +1,131 @@
+name: John Owen - Repair Part One and Release Eight Parts
+on:
+  push:
+    branches: [john-owen-justification-kokoro-2026]
+    paths: ['.github/workflows/owen-repair.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng fonts-dejavu-core
+          python -m pip install kokoro-onnx soundfile numpy pillow
+      - name: Fetch Michael voice and Kokoro model
+        working-directory: owen-kokoro
+        run: |
+          curl -fL --retry 5 'https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx' -o kokoro-v1.0.onnx
+          curl -fL --retry 5 'https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin' -o voices-v1.0.bin
+      - name: Fix video ending 8.18 seconds after audio
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("owen-kokoro/render.py")
+          t=p.read_text()
+          anchor='mp4=OUT/(base+".mp4")'
+          assert t.count(anchor)==1
+          prefix='mp3_target=float(subprocess.check_output(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(mp3)],text=True).strip())\n'
+          t=t.replace(anchor,prefix+anchor)
+          old='"-shortest","-movflags","+faststart",str(mp4)],check=True)'
+          assert t.count(old)==1
+          t=t.replace(old,'"-t",str(mp3_target),"-movflags","+faststart",str(mp4)],check=True)')
+          p.write_text(t)
+          PY
+          python -m py_compile owen-kokoro/render.py
+      - name: Rebuild ONLY Part 1
+        working-directory: owen-kokoro
+        env:
+          OWEN_PART: '1'
+        run: python -u render.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owen-justification-part-1-repaired
+          path: |
+            owen-kokoro/output/*.mp3
+            owen-kokoro/output/*.mp4
+            owen-kokoro/output/*_validation.json
+            owen-kokoro/output/*_source.txt
+            owen-kokoro/output/*.png
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+
+  package:
+    needs: fix
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Reuse 7 successful Part 2 to 8 outputs
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 44845145371
+          repository: endelofaustin/didathing
+          github-token: ${{ github.token }}
+          pattern: owen-justification-part-*
+          merge-multiple: true
+          path: review
+      - name: Add repaired Part 1
+        uses: actions/download-artifact@v4
+        with:
+          name: owen-justification-part-1-repaired
+          path: review
+      - name: Verify all eight parts, text coverage, and media streams
+        run: |
+          python - <<'PY'
+          import json,subprocess
+          from pathlib import Path
+          p=Path("review")
+          docs=[json.loads(x.read_text()) for x in p.glob("*_validation.json")]
+          docs.sort(key=lambda d:d['part'])
+          assert [d['part'] for d in docs]==list(range(1,9)), "Not exactly eight parts"
+          assert len({d['source_word_count'] for d in docs})==1
+          assert len({d['source_chunk_total'] for d in docs})==1
+          assert docs[0]['part_chunk_start']==0
+          assert docs[-1]['part_chunk_end']==docs[0]['source_chunk_total']
+          assert all(a['part_chunk_end']==b['part_chunk_start'] for a,b in zip(docs,docs[1:]))
+          assert sum(d['part_words'] for d in docs)==docs[0]['source_word_count']
+          assert len(list(p.glob('*.mp4')))==len(list(p.glob('*.mp3')))==8
+          for d in docs:
+              n=d['part']
+              stem='John_Owen_Justification_Part_%02d_of_08'%n
+              mp4=p/(stem+'.mp4')
+              assert mp4.stat().st_size>5000000
+              f=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_entries','format=duration','-of','json',str(mp4)],text=True))
+              streamtypes={s['codec_type']:s['codec_name'] for s in f['streams']}
+              assert streamtypes.get('audio')=='aac' and streamtypes.get('video')=='h264'
+              delta=float(f['format']['duration'])-d['mp3_seconds']
+              assert -2<=delta<=(2 if n==1 else 8),(n,delta)
+              print('Part',n,'OK',d['part_words'],'words, duration delta',round(delta,3))
+          print('COMPLETE: 8 parts, no source gaps or overlap, valid MP4 streams')
+          PY
+      - name: Retrieve 460-page public-domain PDF
+        run: |
+          set -e
+          P='review/John_Owen_Justification_HISTORICAL_PUBLIC_DOMAIN_SCAN.pdf'
+          curl -fL --retry 4 'https://upload.wikimedia.org/wikipedia/commons/a/a9/The_doctrine_of_justification_by_faith%2C_through_the_imputation_of_the_righteousness_of_Christ_%28IA_doctrineofjustif00owenuoft%29.pdf' -o "$P" ||
+          curl -fL --retry 4 'https://archive.org/download/doctrineofjustif00owenuoft/doctrineofjustif00owenuoft.pdf' -o "$P"
+          test "$(stat -c %s "$P")" -gt 20000000
+          test "$(head -c 4 "$P")" = '%PDF'
+          pdfinfo "$P" | grep -E '^Pages:[[:space:]]+460$'
+      - name: Upload verified eight-part audiobook and historic PDF to review release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG='john-owen-justification-kokoro-review-2026'
+          FILES=(review/*.mp4 review/John_Owen_Justification_HISTORICAL_PUBLIC_DOMAIN_SCAN.pdf)
+          if gh release view "$TAG" -R endelofaustin/didathing >/dev/null 2>&1; then
+            gh release upload "$TAG" "\${FILES[@]}" --clobber -R endelofaustin/didathing
+          else
+            gh release create "$TAG" "\${FILES[@]}" -R endelofaustin/didathing --target john-owen-justification-kokoro-2026 --title 'John Owen Justification by Faith - Full Eight-Part Audiobook (Review)' --notes 'Eight complete Kokoro Michael-voice videos and a historical public-domain PDF. NOT yet published to YouTube; please review first.'
+          fi
+          gh release view "$TAG" -R endelofaustin/didathing --json url,assets
