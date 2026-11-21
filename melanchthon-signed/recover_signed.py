@@ -3,7 +3,7 @@ import urllib.request,urllib.parse,http.cookiejar,html,re,json,subprocess
 from pathlib import Path
 out=Path('source');out.mkdir(exist_ok=True)
 log=[]
-for edition,book in [('Nuremberg_1552','90ZoAAAAcAAJ'),('Wittenberg_1552','QEllAAAAcAAJ')]:
+for edition,book in [('FullView_1552_A','EWA8AAAAcAAJ'),('FullView_1552_B','u3g8AAAAcAAJ'),('FullView_1552_C','vHg8AAAAcAAJ')]:
  cj=http.cookiejar.CookieJar();opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
  url=f'https://books.google.com/books?id={book}&jscmd=SearchWithinVolume2&q=Osiandri'
  req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36'})
