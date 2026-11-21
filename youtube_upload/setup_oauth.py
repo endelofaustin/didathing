@@ -5,10 +5,14 @@ from pathlib import Path
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 
+# The management workflow needs force-ssl to edit titles/descriptions and
+# playlists. The uploader still needs upload, and the channel check needs read.
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -32,6 +36,7 @@ def main():
     print("\nGitHub secrets page:")
     print("https://github.com/endelofaustin/didathing/settings/secrets/actions")
     print("Keep the OAuth client JSON and printed values private.")
+
 
 if __name__ == "__main__":
     main()
