@@ -28,6 +28,21 @@ This uploader targets **@seekingthechrist114** (channel ID `UC_MLwosrdFohed-oRio
 
    **Note:** External OAuth apps in "Testing" may receive refresh tokens that expire after **7 days**. Google offers other production/personal app configurations; review the [Google OAuth documentation](https://developers.google.com/identity/protocols/oauth2). Choose the appropriate compliant configuration rather than storing an expiring token indefinitely.
 
+## Phone-only setup (Android / Chrome, no Python)
+
+You can authorize our uploader completely from your phone with [Google's OAuth Playground](https://developers.google.com/oauthplayground/). This uses a **Web application** OAuth client rather than the **Desktop app** client described above. **Do not run `setup_oauth.py` for this method.** Both methods produce the same GitHub secret values used by `uploader.py`.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), open your uploader project and enable [YouTube Data API v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com). Configure [Google Auth Platform](https://console.cloud.google.com/auth/overview) for your own account. Personal mode, if available, avoids the External Testing 7-day token expiry.
+2. Under **Clients**, create an OAuth client of type **Web application**. Name it `Seeking the Christ Phone Uploader`. Set the **Authorized redirect URI** to exactly `https://developers.google.com/oauthplayground`. Copy its Client ID and Client Secret **privately**.
+3. Open [OAuth Playground](https://developers.google.com/oauthplayground/) in Chrome. Gear icon → OAuth flow **Server-side**, access type **Offline**, force prompt **Consent Screen**, select **Use your own OAuth credentials**, and enter your new **Web application** Client ID and Secret.
+4. Under Step 1, enter these two scopes separated by a space and tap **Authorize APIs**:
+   `https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly`
+5. Choose the Google account managing **@seekingthechrist114** and grant consent. Under Step 2, tap **Exchange authorization code for tokens**. Copy the **Refresh token** privately.
+6. Open [GitHub Actions Secrets](https://github.com/endelofaustin/didathing/settings/secrets/actions) in Chrome (use **Desktop site** if buttons are missing). Create `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, and `YOUTUBE_REFRESH_TOKEN` using the values you just generated. You never need to send them in chat.
+7. Once the token is safely saved, you can remove the Playground redirect URI from your Google OAuth client. Google's guide recommends doing this to reduce exposure.
+
+**Important:** In Google's **External / Testing** mode, authorization including the YouTube scopes generally expires after seven days. For long-lived automation, prefer **Personal** mode where eligible, or another compliant long-lived OAuth configuration.
+
 ## Prepare the video for the GitHub workflow
 
 The uploader expects a GitHub Actions **artifact containing exactly one MP4 (or MOV)** and, optionally, one JPG/PNG thumbnail. An MP3-only audiobook artifact is *not* a video and cannot be uploaded directly to YouTube. Your FFmpeg video-assembly job should export a self-contained MP4, then add:
